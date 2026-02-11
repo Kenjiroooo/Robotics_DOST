@@ -1,0 +1,108 @@
+#include <Arduino.h>
+
+// L298N Motor Driver Pins
+#define ENA 2  // PWM Speed for Left Motor
+#define IN1 3
+#define IN2 4
+#define IN3 5
+#define IN4 6
+#define ENB 7  // PWM Speed for Right Motor
+
+// Motor Speed (0-255)
+#define MOTOR_SPEED 125 // Reduced to ~50%
+
+unsigned long lastDataTime = 0;
+
+void moveForward() {
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+  analogWrite(ENA, MOTOR_SPEED);
+  analogWrite(ENB, MOTOR_SPEED);
+  // Serial.println("Action: FORWARD");
+}
+
+void turnLeft() {
+  digitalWrite(IN1, LOW);  // Left STOP
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, HIGH); // Right FWD
+  digitalWrite(IN4, LOW);
+  analogWrite(ENA, 0);
+  analogWrite(ENB, MOTOR_SPEED);
+  // Serial.println("Action: LEFT (Corrected)");
+}
+
+void turnRight() {
+  digitalWrite(IN1, HIGH); // Left FWD
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);  // Right STOP
+  digitalWrite(IN4, LOW);
+  analogWrite(ENA, MOTOR_SPEED);
+  analogWrite(ENB, 0);
+  // Serial.println("Action: RIGHT (Corrected)");
+}
+
+void stopMotors() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+  analogWrite(ENA, 0);
+  analogWrite(ENB, 0);
+  // Serial.println("Action: STOP");
+}
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("Arduino Mega Ready - L298N High Power");
+
+  Serial1.begin(115200);
+
+  pinMode(ENA, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  pinMode(ENB, OUTPUT);
+  
+  stopMotors();
+}
+
+void loop() {
+  if (Serial1.available()) {
+    String incomingData = Serial1.readStringUntil('\n');
+    incomingData.trim(); 
+    
+    if (incomingData.startsWith("X:")) {
+        int xIndex = incomingData.indexOf("X:");
+        
+        if (xIndex != -1) {
+            lastDataTime = millis(); // Reset timeout timer
+            
+            String xStr = incomingData.substring(xIndex + 2, incomingData.indexOf(',', xIndex));
+            int x = xStr.toInt();
+            
+            // HQVGA Width 240. Center 120.
+            // Deadband 100-140
+            if (x < 90) { // Widened deadband slightly for stability? Or narrowed? 
+               // User wants continuous action. 
+               // If X < 100, turn left. 
+               turnLeft();
+            } else if (x > 150) {
+               turnRight();
+            } else {
+               moveForward();
+            }
+        }
+    } else {
+        Serial.print("ESP32: ");
+        Serial.println(incomingData);
+    }
+  } 
+  
+  // Timeout: Stop if no data for 200ms (fast stop)
+  if (millis() - lastDataTime > 200) {
+      stopMotors();
+  }
+}
